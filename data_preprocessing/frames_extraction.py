@@ -7,7 +7,7 @@ training_videos_folder = ["../train/0", "../train/1"]
 
 for folder in training_videos_folder:
     videos_path = glob.glob(join(folder, "*.mp4"))
-    folder = folder.split("/")[1]
+    folder = folder.split("/")[2]
 
     counter = 0
     for video_path in videos_path:
