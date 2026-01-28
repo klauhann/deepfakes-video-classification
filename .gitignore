@@ -8,5 +8,4 @@ trained_wts
 training_logs
 triplets
 *.npy
-ff++
 explanation

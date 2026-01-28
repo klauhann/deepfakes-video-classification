@@ -235,7 +235,7 @@ if __name__ == "__main__":
 	# in case this scriot is called from another file, let's make sure it doesn't start training the network...
 	embedding_size = 64
 	input_image_shape = (512, )
-	test_data = pd.read_csv('ff++/test_vids_label.csv')
+	test_data = pd.read_csv('test_vids_label.csv')
 
 	# Use facenet-pytorch's InceptionResnetV1 for embeddings
 	device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')

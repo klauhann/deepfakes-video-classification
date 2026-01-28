@@ -221,9 +221,9 @@ def main():
         plot_map(
             heatmap,
             img=imgs,
-            subtitle="Class_Activation_maps_" + str(counter) + ".png"
+            subtitle="explanation/Class_Activation_maps_" + str(counter) + ".png"
         )
-        print(f"Figure saved as Class_Activation_maps_{counter}.png")
+        print(f"Figure saved as explanation/Class_Activation_maps_{counter}.png")
         cap.release()
 
         counter += 1

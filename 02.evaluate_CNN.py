@@ -22,6 +22,7 @@ from sklearn.metrics import (
     f1_score,
     accuracy_score
 )
+from matplotlib import pyplot as plt
 
 
 def ignore_warnings(*args, **kwargs):
@@ -108,9 +109,25 @@ def cnn_model(model_name, img_size):
     )
     return model
 
+def save_timeline_plot(predictions, video):
+
+    print("[DEBUG] creating plot for video", video, "with predictions: \n", predictions)
+
+    plt.style.use("ggplot")
+    plt.figure()
+    plt.plot(predictions, marker=".")
+    plt.title("Predictions per frame")
+    plt.xlabel("Frame index")
+    plt.ylabel("P(FAKE)")
+    plt.ylim(-0.1, 1.1)
+    plt.grid(True, alpha=0.3)
+    plt.savefig("explanation/timeline_plot_" + video.split("/")[1] + ".png")
+    print(f"Training plot saved to explanation/timeline_plot.png")
+
 
 def main():
     start = time.time()
+    np.set_printoptions(suppress=True, precision=8)
 
     ap = argparse.ArgumentParser()
     ap.add_argument(
@@ -135,10 +152,12 @@ def main():
     args = ap.parse_args()
 
     # Read video labels from csv file
-    test_data = pd.read_csv("ff++/test_vids_label.csv")
+    test_data = pd.read_csv("test_vids_label_small.csv")
 
     videos = test_data["vids_list"]
     true_labels = test_data["label"]
+
+    print("Testing", len(videos), "videos")
 
     # Suppress unncessary warnings
     imageio.core.util._precision_warn = ignore_warnings
@@ -163,16 +182,20 @@ def main():
     videos_done = 0
 
     for video in videos:
+        print("working on video", video)
         cap = cv2.VideoCapture(video)
         batches = []
+        frames = []
 
+        frame_nr = 0
         # Number of frames taken into consideration for each video
         while (cap.isOpened() and len(batches) < 25):
             ret, frame = cap.read()
             if ret is not True:
                 break
 
-            frame = cv2.resize(frame, (args.img_size, args.img_size))
+            frame_nr += 1
+            frame = cv2.resize(frame, (args.image_size, args.image_size))
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             frame = Image.fromarray(frame)
             face = mtcnn(frame)
@@ -191,7 +214,7 @@ def main():
                     .numpy()
                 )
                 batches.append(face_np)
-
+                frames.append(frame_nr)
             except Exception as e:
                 print(f"Image Skipping: {e}")
 
@@ -199,12 +222,19 @@ def main():
         batches /= 255
 
         predictions = model.predict(batches)
+        
+        save_timeline_plot(predictions[:, 1], video)
+
         # Predict the output of each frame
         # axis =1 along the row and axis=0 along the column
         predictions_mean = np.mean(predictions, axis=0)
         y_probabilities += [predictions_mean]
         y_predictions += [predictions_mean.argmax(0)]
 
+        print("predictions mean: ", predictions_mean)
+        print("y probabilities: ", y_probabilities)
+        print("y predictions: ", y_predictions)
+        print("frames: ", frames)
         cap.release()
 
         videos_done += 1
