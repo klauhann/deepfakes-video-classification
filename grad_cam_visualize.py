@@ -1,24 +1,23 @@
-import keras
 import matplotlib.pyplot as plt
-from keras.models import Model
-from keras.layers import Dense
-from keras.layers.pooling import MaxPooling2D
-from keras.layers.core import Dropout, Flatten
-from keras.optimizers import Nadam
-from keras.applications.xception import Xception
-from keras.applications.resnet50 import ResNet50
-from keras.applications.inception_v3 import InceptionV3
-from keras.applications.inception_resnet_v2 import InceptionResNetV2
-from keras.applications.nasnet import NASNetLarge
-from keras_efficientnets import EfficientNetB5, EfficientNetB0
-from vis.utils import utils
-from vis.visualization import visualize_cam
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import GlobalAveragePooling2D, Dense, Dropout
+from tensorflow.keras.optimizers import Nadam
+from tensorflow.keras.applications.xception import Xception
+from tensorflow.keras.applications.resnet50 import ResNet50
+from tensorflow.keras.applications.inception_v3 import InceptionV3
+from tensorflow.keras.applications.inception_resnet_v2 import InceptionResNetV2
+from tensorflow.keras.applications.nasnet import NASNetLarge
+from tensorflow.keras.applications.efficientnet import EfficientNetB0, EfficientNetB5
 import numpy as np
 import imageio.core.util
 from facenet_pytorch import MTCNN
 from PIL import Image
 import pandas as pd
 import cv2
+import torch
+from tf_keras_vis.gradcam import Gradcam
+from tf_keras_vis.utils.model_modifiers import ReplaceToLinear
+import torch
 
 test_data = pd.read_csv("test_vids_label.csv")
 
@@ -33,12 +32,14 @@ def ignore_warnings(*args, **kwargs):
 
 imageio.core.util._precision_warn = ignore_warnings
 
-# Create face detector
+# Create face detector with dynamic device selection
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+print(f"Using device: {device}")
 mtcnn = MTCNN(
     margin=40,
     select_largest=False,
     post_process=False,
-    device="cuda:0"
+    device=device
 )
 
 
@@ -93,15 +94,15 @@ def cnn_model(model_name, img_size):
         )
     elif model_name == "ef0":
         baseModel = EfficientNetB0(
-            input_size,
             weights="imagenet",
-            include_top=False
+            include_top=False,
+            input_shape=(img_size, img_size, 3)
         )
     elif model_name == "ef5":
         baseModel = EfficientNetB5(
-            input_size,
             weights="imagenet",
-            include_top=False
+            include_top=False,
+            input_shape=(img_size, img_size, 3)
         )
 
     headModel = baseModel.output
@@ -127,7 +128,7 @@ def cnn_model(model_name, img_size):
         layer.trainable = True
 
     optimizer = Nadam(
-        lr=0.002, beta_1=0.9, beta_2=0.999, epsilon=1e-08, schedule_decay=0.004
+        learning_rate=0.002, beta_1=0.9, beta_2=0.999, epsilon=1e-08
     )
     model.compile(
         loss="categorical_crossentropy",
@@ -138,29 +139,27 @@ def cnn_model(model_name, img_size):
 
 
 def main():
-    model = xception_model()
-
-    model.load_weights("trained_wts/xception_50_I.hdf5")
-
+    # Use the cnn_model function instead of non-existent xception_model
+    model = cnn_model("xception", img_size=160)
+    model.load_weights("trained_wts/xception_best.hdf5")
     print("Weights loaded...")
 
-    # Utility to search for layer index by name. Alternatively we can
-    # specify this as -1 since it corresponds to the last layer.
-    layer_idx = utils.find_layer_idx(model, "dense_4")
-    # Swap softmax with linear
-    model.layers[layer_idx].activation = keras.activations.linear
-    model = utils.apply_modifications(model)
-
-    penultimate_layer_idx = utils.find_layer_idx(model, "block14_sepconv2_act")
-
-    # block14_sepconv2_act
-    # dense_4
-
+    # Find the last convolutional layer for Xception
+    conv_layer_name = "block14_sepconv2_act"
+    
+    # Create Gradcam object with model modifier to replace softmax with linear
+    gradcam = Gradcam(model, model_modifier=ReplaceToLinear(), clone=True)
+    
+    # Define score function for the predicted class
+    def score_function(output):
+        # Returns the predicted class score
+        return output
+    
     counter = 0
     for i in videos[:4]:
         cap = cv2.VideoCapture(i)
         batches = []
-        counter = 0
+        frame_counter = 0
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
@@ -169,14 +168,26 @@ def main():
             frame = Image.fromarray(frame)
             face = mtcnn(frame)
 
+            if face is None:
+                continue
+
             try:
-                face = face.permute(1, 2, 0).int().numpy()
-                batches.append(face)
-            except AttributeError:
-                print("Image Skipping")
-            if counter == 4:
+                # Convert tensor to numpy array properly
+                face_np = (
+                    face.permute(1, 2, 0)
+                    .numpy()
+                )
+                batches.append(face_np)
+            except Exception as e:
+                print(f"Image Skipping: {e}")
+            if frame_counter == 4:
                 break
-            counter += 1
+            frame_counter += 1
+        
+        if len(batches) == 0:
+            print(f"No faces detected in video {i}, skipping...")
+            continue
+            
         batches = np.asarray(batches).astype("float32")
         batches /= 255
         print(batches.shape)
@@ -186,25 +197,33 @@ def main():
         y_pred = pred_mean.argmax(0)
 
         imgs = batches[0]
-        print(imgs.shape)
-        seed_input = imgs
-        class_idx = y_pred
-        grad_top1 = visualize_cam(
-            model,
-            layer_idx,
-            class_idx,
-            seed_input,
-            penultimate_layer_idx=penultimate_layer_idx,  # None,
-            backprop_modifier=None,
-            grad_modifier=None,
+        print(f"Image shape: {imgs.shape}, Predicted class: {y_pred}")
+        
+        # Prepare image for Gradcam
+        img_array = np.expand_dims(imgs, axis=0)
+        
+        # Generate heatmap using Gradcam
+        cam = gradcam(
+            score_function,
+            img_array,
+            penultimate_layer=-1  # Use the last conv layer
         )
-
+        
+        # Normalize heatmap
+        heatmap = cam[0]
+        heatmap = np.maximum(heatmap, 0)
+        if np.max(heatmap) != 0:
+            heatmap /= np.max(heatmap)
+        
+        # Resize to match image dimensions
+        heatmap = cv2.resize(heatmap, (imgs.shape[1], imgs.shape[0]))
+        
         plot_map(
-            grad_top1,
-            img=seed_input,
-            subtitle="Class Activation maps" + str(counter)
+            heatmap,
+            img=imgs,
+            subtitle="Class_Activation_maps_" + str(counter) + ".png"
         )
-        print("Figure saved..")
+        print(f"Figure saved as Class_Activation_maps_{counter}.png")
         cap.release()
 
         counter += 1

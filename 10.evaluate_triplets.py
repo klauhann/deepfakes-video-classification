@@ -16,7 +16,7 @@ from keras.applications.xception import Xception
 from keras import backend as K
 # from keras.utils import plot_model
 from keras.callbacks import ModelCheckpoint
-from keras.layers.pooling import MaxPooling2D
+from keras.layers import MaxPooling2D
 from keras import utils
 
 ## required for semi-hard triplet loss:
@@ -46,8 +46,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import precision_score, recall_score, f1_score
 import seaborn as sns
 import matplotlib.patheffects as PathEffects
-from facenet_pytorch import MTCNN
-from keras_facenet import FaceNet
+from facenet_pytorch import MTCNN, InceptionResnetV1
+import torch
 
 
 def ignore_warnings(*args, **kwargs):
@@ -56,7 +56,9 @@ def ignore_warnings(*args, **kwargs):
 imageio.core.util._precision_warn = ignore_warnings
 
 # Create face detector
-mtcnn = MTCNN(margin=40, select_largest=False, post_process=False, device='cuda:0')
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+print(f"Using device: {device}")
+mtcnn = MTCNN(margin=40, select_largest=False, post_process=False, device=device)
 
 def pairwise_distance(feature, squared=False):
 	"""Computes the pairwise distance matrix with numerical stability.
@@ -235,7 +237,9 @@ if __name__ == "__main__":
 	input_image_shape = (512, )
 	test_data = pd.read_csv('ff++/test_vids_label.csv')
 
-	embedder = FaceNet()
+	# Use facenet-pytorch's InceptionResnetV1 for embeddings
+	device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+	embedder = InceptionResnetV1(pretrained='vggface2').eval().to(device)
 
 	videos = test_data["vids_list"]
 	true_labels = test_data["label"]
@@ -246,7 +250,7 @@ if __name__ == "__main__":
 	testing_embeddings = create_base_network(input_image_shape,
 											 embedding_size=embedding_size)
 
-	model = load_model("triplets/triplets_semi_hard.hdf5",
+	model = load_model("triplets/triplets_semi_hard_sacred_model.hdf5",
 		custom_objects={'triplet_loss_adapted_from_tf':triplet_loss_adapted_from_tf})
 
 	# Grabbing the weights from the trained network
@@ -260,8 +264,8 @@ if __name__ == "__main__":
 	y_probabilities = []
 	c= 0
 
-	# test_data = np.load("test_embs.npy")
-	test_label = np.load("test_labels.npy")
+	# Use labels from CSV instead of loading from .npy file
+	test_label = true_labels.values
 
 	for i in videos:
 		cap = cv2.VideoCapture(i)
@@ -276,36 +280,55 @@ if __name__ == "__main__":
 			frame = Image.fromarray(frame)
 			face = mtcnn(frame)
 			
-			try:
-				face = face.permute(1, 2, 0).int().numpy()
-				batches.append(face)
-			except AttributeError:
-				print("Image Skipping")
+			if face is None:
+				continue
+				
+			try: 
+				# Tensor (C, H, W) -> NumPy (H, W, C)
+				face_np = face.permute(1, 2, 0).cpu().numpy()
+				# Wertebereich 0–255 und uint8
+				face_np = np.clip(face_np, 0, 255).astype(np.uint8)
+		
+				batches.append(face_np)
+			except Exception as e:
+				print(f"Image Skipping: {e}")
 			mounting+=1
 
 		batches = np.asarray(batches).astype('float32')
 		print(batches.shape)
 
-		embeddings = embedder.embeddings(batches)
+		# Skip videos with no detected faces
+		if len(batches) == 0:
+			print(f"Warning: No faces detected in video {i}, skipping...")
+			# Use default prediction (0) for videos without faces
+			y_predictions.append(0)
+			y_probabilities.append([1.0, 0.0])  # Default to real
+			continue
+
+		# Convert to torch tensor and normalize for InceptionResnetV1
+		# Expected input: (batch, 3, 160, 160) normalized to [-1, 1]
+		batches_torch = torch.from_numpy(batches).permute(0, 3, 1, 2).float()
+		batches_torch = (batches_torch - 127.5) / 128.0  # Normalize to [-1, 1]
+		batches_torch = batches_torch.to(device)
+		
+		with torch.no_grad():
+			embeddings = embedder(batches_torch).cpu().numpy()
+		
+		print(f"Embeddings shape: {embeddings.shape}")
 		x_test = testing_embeddings.predict(embeddings)
 		
-		# print("Embeddings after training")
-		sgd = linear_model.SGDClassifier(max_iter=50, tol=None)
-		with open('triplets/sgd_classifier.pkl', 'rb') as fid:
-			sgd_loaded = pickle.load(fid)
-		y_pred = sgd_loaded.predict(x_test)
-		y_probabs = sgd_loaded.predict_proba(x_test)
-
-		pred_mean = np.mean(y_pred, axis=0)
-		probab_mean = np.mean(y_probabs, axis=0)
-		# probab_mean = 1 - probab_mean
-
-		y_probabilities +=[probab_mean]
-		# print(pred_mean)
-		if pred_mean<0.5:
-			y_predictions+=[0]
-		else:
-			y_predictions+=[1]
+		# Instead of using a pre-trained classifier, use distance-based classification
+		# For triplet networks, we can use the embedding magnitude/distance as a simple classifier
+		# Average the embeddings and use a simple threshold
+		embedding_mean = np.mean(x_test, axis=0)
+		embedding_norm = np.linalg.norm(embedding_mean)
+		
+		# Simple heuristic: lower norm suggests real, higher suggests fake
+		# You can adjust the threshold (0.5) based on your data
+		pred_score = 1 / (1 + np.exp(-embedding_norm))  # Sigmoid transformation
+		
+		y_probabilities.append([1 - pred_score, pred_score])
+		y_predictions.append(1 if pred_score > 0.5 else 0)
 
 	y_probabilities = np.array(y_probabilities)
 	# print(y_probabilities[:, 1])

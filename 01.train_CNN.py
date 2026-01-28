@@ -1,19 +1,17 @@
-from keras.preprocessing.image import ImageDataGenerator
-from keras.layers.pooling import GlobalAveragePooling2D
-from keras.layers.core import Dropout, Dense
-from keras.models import Model
-from keras.optimizers import Nadam
-from keras.callbacks import ModelCheckpoint, EarlyStopping
-from keras.callbacks import CSVLogger
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.layers import GlobalAveragePooling2D, Dropout, Dense
+from tensorflow.keras.models import Model
+from tensorflow.keras.optimizers import Nadam
+from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, CSVLogger
 from sklearn.model_selection import train_test_split
-from keras.applications.xception import Xception
-from keras.applications.resnet50 import ResNet50
-from keras.applications.inception_v3 import InceptionV3
-from keras.applications.inception_resnet_v2 import InceptionResNetV2
-from keras.applications.nasnet import NASNetLarge
-from keras_efficientnets import EfficientNetB5, EfficientNetB0
+from tensorflow.keras.applications.xception import Xception
+from tensorflow.keras.applications.resnet50 import ResNet50
+from tensorflow.keras.applications.inception_v3 import InceptionV3
+from tensorflow.keras.applications.inception_resnet_v2 import InceptionResNetV2
+from tensorflow.keras.applications.nasnet import NASNetLarge
+from tensorflow.keras.applications.efficientnet import EfficientNetB0, EfficientNetB5
 from matplotlib import pyplot as plt
-from keras import backend as K
+from tensorflow.keras import backend as K
 import numpy as np
 import time
 import argparse
@@ -92,7 +90,7 @@ def cnn_model(model_name, img_size):
         layer.trainable = True
 
     optimizer = Nadam(
-        lr=0.002, beta_1=0.9, beta_2=0.999, epsilon=1e-08, schedule_decay=0.004
+        learning_rate=0.002, beta_1=0.9, beta_2=0.999, epsilon=1e-08
     )
     model.compile(
         loss="categorical_crossentropy",
@@ -136,8 +134,8 @@ def main():
     args = ap.parse_args()
 
     # Training dataset loading
-    train_data = np.load("train_data.npy")
-    train_label = np.load("train_label.npy")
+    train_data = np.load("train_data_25_c40.npy")
+    train_label = np.load("train_label_25_c40.npy")
 
     print("Dataset Loaded...")
 
@@ -165,10 +163,10 @@ def main():
 
     # Number of trainable and non-trainable parameters
     trainable_count = int(
-        np.sum([K.count_params(p) for p in set(model.trainable_weights)])
+        np.sum([K.count_params(w) for w in model.trainable_weights])
     )
     non_trainable_count = int(
-        np.sum([K.count_params(p) for p in set(model.non_trainable_weights)])
+        np.sum([K.count_params(w) for w in model.non_trainable_weights])
     )
 
     print("Total params: {:,}".format(trainable_count + non_trainable_count))
@@ -184,7 +182,7 @@ def main():
 
     # Keras backend
     model_checkpoint = ModelCheckpoint(
-        "trained_wts/" + args.weights_save_name + ".hdf5",
+        "trained_wts/" + args.weights_save_name + ".weights.h5",
         monitor="val_loss",
         verbose=1,
         save_best_only=True,
@@ -201,7 +199,7 @@ def main():
     print("Training is going to start in 3... 2... 1... ")
 
     # Model Training
-    H = model.fit_generator(
+    H = model.fit(
         trainAug.flow(trainX, trainY, batch_size=args.batch_size),
         steps_per_epoch=len(trainX) // args.batch_size,
         validation_data=valAug.flow(valX, valY),
@@ -213,7 +211,8 @@ def main():
     # plot the training loss and accuracy
     plt.style.use("ggplot")
     plt.figure()
-    N = stopping.stopped_epoch + 1
+    # Use actual number of epochs trained instead of stopped_epoch
+    N = len(H.history["loss"])
     plt.plot(np.arange(0, N), H.history["loss"], label="train_loss")
     plt.plot(np.arange(0, N), H.history["val_loss"], label="val_loss")
     plt.plot(np.arange(0, N), H.history["accuracy"], label="train_acc")
@@ -223,6 +222,7 @@ def main():
     plt.ylabel("Loss/Accuracy")
     plt.legend(loc="lower left")
     plt.savefig("plots/training_plot.png")
+    print(f"Training plot saved to plots/training_plot.png")
 
     end = time.time()
     dur = end - start

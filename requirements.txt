@@ -2,6 +2,7 @@
 numpy>=1.21.0
 tensorflow>=2.13.0
 keras>=2.13.0
+seaborn>=0.11.0
 
 # Computer Vision
 opencv-contrib-python>=4.8.0
@@ -27,5 +28,5 @@ matplotlib>=3.5.0
 keras_efficientnets>=0.1.6
 
 # Optional (if using specific features)
-# keras-facenet==0.1a5
-# keras-vis==0.4.1
+keras-facenet==0.1a5
+keras-vis==0.4.1

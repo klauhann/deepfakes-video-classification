@@ -1,11 +1,17 @@
-from keras.layers import Activation
-from keras.regularizers import l2
-from keras.models import Model
-from keras.optimizers import SGD
-from keras.utils import np_utils
-from keras.layers.core import Dense, Dropout, Flatten
-from keras.layers.convolutional import Conv3D, MaxPooling3D, ZeroPadding3D
-from keras.layers import Input
+from tensorflow.keras.layers import (
+    Activation,
+    Dense,
+    Dropout,
+    Flatten,
+    Conv3D,
+    MaxPooling3D,
+    ZeroPadding3D,
+    Input,
+)
+from tensorflow.keras.regularizers import l2
+from tensorflow.keras.models import Model
+from tensorflow.keras.optimizers import SGD
+from tensorflow.keras.utils import to_categorical
 
 # from schedules import onetenth_4_8_12
 import numpy as np
@@ -293,7 +299,7 @@ def generator_train_batch(train_vid_list, batch_size, num_classes):
                 train=True
             )
             x = preprocess(x_train)
-            y = np_utils.to_categorical(np.array(x_labels), num_classes)
+            y = to_categorical(np.array(x_labels), num_classes)
             yield x, y
 
 
@@ -309,7 +315,7 @@ def generator_val_batch(val_vid_list, batch_size, num_classes):
                 train=False
             )
             x = preprocess(y_test)
-            y = np_utils.to_categorical(np.array(y_labels), num_classes)
+            y = to_categorical(np.array(y_labels), num_classes)
             yield x, y
 
 
@@ -339,7 +345,7 @@ def main():
     args = ap.parse_args()
 
     # Video cropped faces train path
-    train_path = ["train_faces_c40/1", "train_faces_c40/0"]
+    train_path = ["train_face/1", "train_face/0"]
 
     list_1 = [join(train_path[0], x) for x in listdir(train_path[0])]
     list_0 = [join(train_path[1], x) for x in listdir(train_path[1])]
@@ -365,7 +371,7 @@ def main():
         model = conv3d_model(batch_size=args.batch_size)
 
     lr = 0.005
-    sgd = SGD(lr=lr, momentum=0.9, nesterov=True)
+    sgd = SGD(learning_rate=lr, momentum=0.9, nesterov=True)
     model.compile(
         loss="categorical_crossentropy",
         optimizer=sgd,
@@ -373,7 +379,7 @@ def main():
     )
 
     # Model fitting
-    history = model.fit_generator(
+    history = model.fit(
         generator_train_batch(train_vid_list, batch_size, num_classes),
         steps_per_epoch=len(train_vid_list) // batch_size,
         epochs=epochs,

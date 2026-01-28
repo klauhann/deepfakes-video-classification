@@ -6,16 +6,16 @@ import cv2
 import time
 import argparse
 import numpy as np
-from keras.models import Model
-from keras.layers.pooling import GlobalAveragePooling2D
-from keras.layers.core import Dropout, Dense
-from keras.optimizers import Nadam
-from keras.applications.xception import Xception
-from keras.applications.resnet50 import ResNet50
-from keras.applications.inception_v3 import InceptionV3
-from keras.applications.inception_resnet_v2 import InceptionResNetV2
-from keras.applications.nasnet import NASNetLarge
-from keras_efficientnets import EfficientNetB5, EfficientNetB0
+import torch
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import GlobalAveragePooling2D, Dropout, Dense
+from tensorflow.keras.optimizers import Nadam
+from tensorflow.keras.applications.xception import Xception
+from tensorflow.keras.applications.resnet50 import ResNet50
+from tensorflow.keras.applications.inception_v3 import InceptionV3
+from tensorflow.keras.applications.inception_resnet_v2 import InceptionResNetV2
+from tensorflow.keras.applications.nasnet import NASNetLarge
+from tensorflow.keras.applications.efficientnet import EfficientNetB5, EfficientNetB0
 from sklearn.metrics import (
     precision_score,
     recall_score,
@@ -65,15 +65,15 @@ def cnn_model(model_name, img_size):
         )
     elif model_name == "ef0":
         baseModel = EfficientNetB0(
-            input_size,
             weights="imagenet",
-            include_top=False
+            include_top=False,
+            input_shape=(img_size, img_size, 3)
         )
     elif model_name == "ef5":
         baseModel = EfficientNetB5(
-            input_size,
             weights="imagenet",
-            include_top=False
+            include_top=False,
+            input_shape=(img_size, img_size, 3)
         )
 
     headModel = baseModel.output
@@ -99,7 +99,7 @@ def cnn_model(model_name, img_size):
         layer.trainable = True
 
     optimizer = Nadam(
-        lr=0.002, beta_1=0.9, beta_2=0.999, epsilon=1e-08, schedule_decay=0.004
+        learning_rate=0.002, beta_1=0.9, beta_2=0.999, epsilon=1e-08
     )
     model.compile(
         loss="categorical_crossentropy",
@@ -135,7 +135,7 @@ def main():
     args = ap.parse_args()
 
     # Read video labels from csv file
-    test_data = pd.read_csv("test_vids_label.csv")
+    test_data = pd.read_csv("ff++/test_vids_label.csv")
 
     videos = test_data["vids_list"]
     true_labels = test_data["label"]
@@ -143,12 +143,14 @@ def main():
     # Suppress unncessary warnings
     imageio.core.util._precision_warn = ignore_warnings
 
-    # Create face detector
+    # Create face detector with dynamic device selection
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
     mtcnn = MTCNN(
         margin=40,
         select_largest=False,
         post_process=False,
-        device="cuda:0"
+        device=device
     )
 
     # Loading model weights
@@ -175,11 +177,23 @@ def main():
             frame = Image.fromarray(frame)
             face = mtcnn(frame)
 
+            if face is None:
+                continue
+
             try:
-                face = face.permute(1, 2, 0).int().numpy()
-                batches.append(face)
-            except AttributeError:
-                print("Image Skipping")
+                # Convert tensor to numpy array properly
+                face_np = (
+                    face.permute(1, 2, 0)
+                    .mul(255)
+                    .clamp(0, 255)
+                    .to(torch.uint8)
+                    .cpu()
+                    .numpy()
+                )
+                batches.append(face_np)
+
+            except Exception as e:
+                print(f"Image Skipping: {e}")
 
         batches = np.asarray(batches).astype("float32")
         batches /= 255
@@ -193,9 +207,8 @@ def main():
 
         cap.release()
 
-        if videos_done % 10 == 0:
-            print("Number of videos done:", videos_done)
         videos_done += 1
+        print("Number of videos done:", videos_done)
 
     print("Accuracy Score:", accuracy_score(true_labels, y_predictions))
     print("Precision Score:", precision_score(true_labels, y_predictions))

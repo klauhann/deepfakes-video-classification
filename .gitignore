@@ -3,3 +3,10 @@
 train
 train_frames
 train_face
+test
+trained_wts
+training_logs
+triplets
+*.npy
+ff++
+explanation
