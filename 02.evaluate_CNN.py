@@ -125,6 +125,14 @@ def save_timeline_plot(predictions, video):
     print(f"Training plot saved to explanation/timeline_plot.png")
 
 
+def save_face_crop(face_np, video, frame_nr, out_root="explanation/frames"):
+    video_id = video.split("/")[-1].split(".")[0]
+    out_dir = os.path.join(out_root, video_id)
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, f"frame_{frame_nr:04d}.png")
+    Image.fromarray(face_np).save(out_path)
+
+
 def main():
     start = time.time()
     np.set_printoptions(suppress=True, precision=8)
@@ -205,16 +213,11 @@ def main():
 
             try:
                 # Convert tensor to numpy array properly
-                face_np = (
-                    face.permute(1, 2, 0)
-                    .mul(255)
-                    .clamp(0, 255)
-                    .to(torch.uint8)
-                    .cpu()
-                    .numpy()
-                )
+                face_np = face.permute(1, 2, 0).cpu().numpy()
+                face_np = np.clip(face_np, 0, 255).astype(np.uint8)
                 batches.append(face_np)
                 frames.append(frame_nr)
+                save_face_crop(face_np, video, frame_nr)
             except Exception as e:
                 print(f"Image Skipping: {e}")
 
