@@ -30,3 +30,5 @@ keras_efficientnets>=0.1.6
 # Optional (if using specific features)
 keras-facenet==0.1a5
 keras-vis==0.4.1
+
+streamlit
