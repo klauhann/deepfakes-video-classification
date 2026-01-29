@@ -25,6 +25,7 @@ from sklearn.metrics import (
 from matplotlib import pyplot as plt
 from tf_keras_vis.gradcam import Gradcam
 from tf_keras_vis.utils.model_modifiers import ReplaceToLinear
+from pathlib import Path
 
 
 def ignore_warnings(*args, **kwargs):
@@ -120,7 +121,7 @@ def save_timeline_plot(predictions, video):
     plt.ylabel("P(FAKE)")
     plt.ylim(-0.1, 1.1)
     plt.grid(True, alpha=0.3)
-    plt.savefig("explanation/timeline_plot_" + video.split("/")[1] + ".png")
+    plt.savefig("explanation/timeline_plot_" + Path(Path(video).name).stem + ".png")
 
 def save_face_crop(face_np, video, frame_nr, out_root="explanation/frames"):
     video_id = video.split("/")[-1].split(".")[0]
