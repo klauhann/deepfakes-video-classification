@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
-LABELS_CSV = Path("test_vids_label_small.csv")
+LABELS_CSV = Path("test_vids_label.csv")
 EXPLANATION_DIR = Path("explanation")
 HEATMAPS_DIR = EXPLANATION_DIR / "heatmaps"
 TIMELINE_PREFIX = "timeline_plot_"
