@@ -208,3 +208,10 @@ If you find this work useful, please consider citing the following paper:
 For FaceForensics++ and Celeb-DF dataset, contact the authors of the dataset. The dataset can't be shared with the third party. You need to accept the terms on their pages. Then, they will provide you with the access.
 
 Codes have been formatted in PEP-8 styling so that it's easy to read and reproducible to all. If any errors you face in the repo, please raise a issue. (Any place where I should explain more) I'll be happy to resolve it as soon as possible.
+
+
+## Streamlit
+Open the interface with this command:
+```
+streamlit run interface.py
+````

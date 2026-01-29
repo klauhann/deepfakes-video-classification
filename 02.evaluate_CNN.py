@@ -112,9 +112,6 @@ def cnn_model(model_name, img_size):
     return model
 
 def save_timeline_plot(predictions, video):
-
-    print("[DEBUG] creating plot for video", video, "with predictions: \n", predictions)
-
     plt.style.use("ggplot")
     plt.figure()
     plt.plot(predictions, marker=".")
@@ -124,8 +121,6 @@ def save_timeline_plot(predictions, video):
     plt.ylim(-0.1, 1.1)
     plt.grid(True, alpha=0.3)
     plt.savefig("explanation/timeline_plot_" + video.split("/")[1] + ".png")
-    print(f"Training plot saved to explanation/timeline_plot.png")
-
 
 def save_face_crop(face_np, video, frame_nr, out_root="explanation/frames"):
     video_id = video.split("/")[-1].split(".")[0]
@@ -177,10 +172,20 @@ def main():
         help="Batch size",
         default=224,
     )
+
+    ap.add_argument(
+        "-v",
+        "--video_list_path",
+        required=False,
+        type=str,
+        help="Path to Video list CSV",
+        default="test_vids_label.csv",
+    )
+
     args = ap.parse_args()
 
     # Read video labels from csv file
-    test_data = pd.read_csv("test_vids_label_small.csv")
+    test_data = pd.read_csv(args.video_list_path)
 
     videos = test_data["vids_list"]
     true_labels = test_data["label"]
@@ -219,7 +224,6 @@ def main():
     videos_done = 0
 
     for video in videos:
-        print("working on video", video)
         cap = cv2.VideoCapture(video)
         batches = []
         frames = []
@@ -295,10 +299,6 @@ def main():
                 filename=os.path.join(heatmap_dir, f"frame_{frame_idx:04d}.png")
             )
 
-        print("predictions mean: ", predictions_mean)
-        print("y probabilities: ", y_probabilities)
-        print("y predictions: ", y_predictions)
-        print("frames: ", frames)
         cap.release()
 
         videos_done += 1

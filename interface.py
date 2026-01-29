@@ -28,6 +28,8 @@ if st.button("Classify Videos using CNN"):
             "xception_best",
             "-im_size",
             "160",
+            "-video_list_path",
+            labels_path
         ]
         result = subprocess.run(command, capture_output=True, text=True)
 
@@ -45,7 +47,7 @@ if st.button("Classify Videos using CNN"):
     vid_to_index = {vid: i for i, vid in enumerate(vids_list)}
     label_text = {0: "Real", 1: "Fake"}
 
-    st.subheader("Results")
+    st.header("Results")
     if plot_files:
         for plot_file in plot_files:
             raw_id = plot_file.stem.replace("timeline_plot_", "")
@@ -64,16 +66,6 @@ if st.button("Classify Videos using CNN"):
 
             st.subheader(str(idx) + ": " + video_filename)
 
-            col_video, col_plot = st.columns(2, vertical_alignment="center")
-            with col_video:
-                if video_path and Path(video_path).exists():
-                    st.video(video_path, width="stretch")
-                else:
-                    st.info(f"Video nicht gefunden: {video_filename}")
-            with col_plot:
-                st.image(str(plot_file), caption=plot_file.name, width="content")
-
-          
             if idx is not None and y_predictions is not None and true_labels is not None:
                 prob_text = ""
                 if y_probabilities is not None:
@@ -87,7 +79,16 @@ if st.button("Classify Videos using CNN"):
                 )
             else:
                 st.info("Keine Vorhersage für dieses Video gefunden.")
-           
+
+            col_video, col_plot = st.columns(2, vertical_alignment="center")
+            with col_video:
+                if video_path and Path(video_path).exists():
+                    st.video(video_path, width="stretch")
+                else:
+                    st.info(f"Video nicht gefunden: {video_filename}")
+            with col_plot:
+                st.image(str(plot_file), caption=plot_file.name, width="content")
+
             frames_dir = Path("explanation/heatmaps") / video_id
             frame_files = sorted(frames_dir.glob("frame_*.png"))
             if frame_files:
