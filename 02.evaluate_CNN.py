@@ -23,6 +23,8 @@ from sklearn.metrics import (
     accuracy_score
 )
 from matplotlib import pyplot as plt
+from tf_keras_vis.gradcam import Gradcam
+from tf_keras_vis.utils.model_modifiers import ReplaceToLinear
 
 
 def ignore_warnings(*args, **kwargs):
@@ -132,6 +134,24 @@ def save_face_crop(face_np, video, frame_nr, out_root="explanation/frames"):
     out_path = os.path.join(out_dir, f"frame_{frame_nr:04d}.png")
     Image.fromarray(face_np).save(out_path)
 
+def plot_map(grads, img, filename=None):
+    if filename is None:
+        return
+
+    heatmap = np.clip(grads, 0, 1)
+    heatmap_uint8 = (heatmap * 255).astype(np.uint8)
+    heatmap_color = cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_JET)
+
+    if img.dtype != np.uint8:
+        img = np.clip(img * 255, 0, 255).astype(np.uint8)
+
+    if img.shape[-1] == 3:
+        img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    else:
+        img_bgr = img
+
+    overlay = cv2.addWeighted(img_bgr, 0.6, heatmap_color, 0.4, 0)
+    cv2.imwrite(filename, overlay)
 
 def main():
     start = time.time()
@@ -185,6 +205,15 @@ def main():
     model.load_weights("trained_wts/" + args.load_weights_name + ".hdf5")
     print("Weights loaded...")
 
+    # Create Gradcam object with model modifier to replace softmax with linear
+    gradcam = Gradcam(model, model_modifier=ReplaceToLinear(), clone=True)
+    
+    # Define score function for the predicted class
+    def score_function(output):
+        # Returns the predicted class score
+        return output
+    
+
     y_predictions = []
     y_probabilities = []
     videos_done = 0
@@ -221,6 +250,11 @@ def main():
             except Exception as e:
                 print(f"Image Skipping: {e}")
 
+        if len(batches) == 0:
+            cap.release()
+            print("No faces extracted for video, skipping.")
+            continue
+
         batches = np.asarray(batches).astype("float32")
         batches /= 255
 
@@ -233,6 +267,33 @@ def main():
         predictions_mean = np.mean(predictions, axis=0)
         y_probabilities += [predictions_mean]
         y_predictions += [predictions_mean.argmax(0)]
+
+        video_id = video.split("/")[-1].split(".")[0]
+        heatmap_dir = os.path.join("explanation", "heatmaps", video_id)
+        os.makedirs(heatmap_dir, exist_ok=True)
+
+        # Generate heatmap using Gradcam
+        cams = gradcam(
+            score_function,
+            batches,
+            penultimate_layer=-1  # Use the last conv layer
+        )
+
+        for img, frame_idx, cam in zip(batches, frames, cams):
+            # Normalize heatmap per frame
+            heatmap = np.maximum(cam, 0)
+            max_val = np.max(heatmap)
+            if max_val > 0:
+                heatmap = heatmap / max_val
+
+            # Resize to match image dimensions
+            heatmap = cv2.resize(heatmap, (img.shape[1], img.shape[0]))
+
+            plot_map(
+                heatmap,
+                img=img,
+                filename=os.path.join(heatmap_dir, f"frame_{frame_idx:04d}.png")
+            )
 
         print("predictions mean: ", predictions_mean)
         print("y probabilities: ", y_probabilities)

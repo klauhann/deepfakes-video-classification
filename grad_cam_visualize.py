@@ -19,6 +19,7 @@ from tf_keras_vis.gradcam import Gradcam
 from tf_keras_vis.utils.model_modifiers import ReplaceToLinear
 import torch
 
+MAX_VIDEOS = 10
 test_data = pd.read_csv("test_vids_label.csv")
 
 videos = test_data["vids_list"]
@@ -156,7 +157,7 @@ def main():
         return output
     
     counter = 0
-    for i in videos[:4]:
+    for i in videos[:MAX_VIDEOS]:
         cap = cv2.VideoCapture(i)
         batches = []
         frame_counter = 0

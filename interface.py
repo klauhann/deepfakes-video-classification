@@ -88,7 +88,7 @@ if st.button("Classify Videos using CNN"):
             else:
                 st.info("Keine Vorhersage für dieses Video gefunden.")
            
-            frames_dir = Path("explanation/frames") / video_id
+            frames_dir = Path("explanation/heatmaps") / video_id
             frame_files = sorted(frames_dir.glob("frame_*.png"))
             if frame_files:
                 st.caption(f"Frames for {video_id}")
